@@ -4,81 +4,200 @@ import fs from "fs";
 
 const app = express();
 
+const PORT = process.env.PORT || 3000;
+const API_KEY = process.env.GEMINI_API_KEY;
+const MODEL = "gemini-2.5-flash";
+
+fs.mkdirSync("uploads", { recursive: true });
+
 const upload = multer({
   dest: "uploads/",
   limits: {
-    fileSize: 2 * 1024 * 1024 * 1024
+    fileSize: 50 * 1024 * 1024
   }
 });
 
 app.use(express.static("public"));
 
-const API_KEY = process.env.GEMINI_API_KEY;
-const MODEL = "gemini-2.5-flash";
 
-if (!API_KEY) {
-  console.error("GEMINI_API_KEY is missing");
-}
+// ======================================
+// Gemini REST API with Auto Retry
+// ======================================
 
-// ===============================
-// GEMINI REST API
-// ===============================
+async function askGemini(prompt, maxRetries = 3) {
 
-async function generateContent(contents) {
+  if (!API_KEY) {
+    throw new Error("GEMINI_API_KEY မတွေ့ပါ။ Render Environment ကို စစ်ပါ။");
+  }
 
-  const response = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent`,
-    {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-goog-api-key": API_KEY
-      },
-      body: JSON.stringify({
-        contents
-      })
+  let lastError = "";
+
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+
+    try {
+
+      const response = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "x-goog-api-key": API_KEY.trim()
+          },
+          body: JSON.stringify({
+            contents: [
+              {
+                role: "user",
+                parts: [
+                  {
+                    text: prompt
+                  }
+                ]
+              }
+            ]
+          })
+        }
+      );
+
+      const data = await response.json();
+
+      if (response.ok) {
+
+        const text =
+          data.candidates?.[0]?.content?.parts
+            ?.map(part => part.text || "")
+            .join("") || "";
+
+        if (!text) {
+          throw new Error("Gemini က ဘာသာပြန်စာ ပြန်မပေးပါ။");
+        }
+
+        return text;
+      }
+
+
+      // Gemini server busy / high demand
+      const errorMessage =
+        data.error?.message ||
+        "Gemini API error";
+
+      lastError = errorMessage;
+
+      const retryable =
+        response.status === 429 ||
+        response.status === 500 ||
+        response.status === 502 ||
+        response.status === 503 ||
+        errorMessage.toLowerCase().includes("high demand") ||
+        errorMessage.toLowerCase().includes("temporarily");
+
+      if (!retryable) {
+        throw new Error(errorMessage);
+      }
+
+      if (attempt < maxRetries) {
+
+        console.log(
+          `Gemini busy. Retry ${attempt}/${maxRetries}...`
+        );
+
+        // 5 sec, 10 sec, 15 sec
+        await new Promise(resolve =>
+          setTimeout(resolve, attempt * 5000)
+        );
+      }
+
+    } catch (error) {
+
+      lastError = error.message;
+
+      if (attempt === maxRetries) {
+        throw new Error(lastError);
+      }
+
+      console.log(
+        `Retry ${attempt}/${maxRetries}: ${error.message}`
+      );
+
+      await new Promise(resolve =>
+        setTimeout(resolve, attempt * 5000)
+      );
     }
-  );
-
-  const data = await response.json();
-
-  if (!response.ok) {
-    throw new Error(
-      data.error?.message ||
-      "Gemini API request failed"
-    );
   }
 
-  const text =
-    data.candidates?.[0]?.content?.parts
-      ?.map(part => part.text || "")
-      .join("") || "";
-
-  if (!text) {
-    throw new Error("Gemini က စာသားပြန်မပေးပါ");
-  }
-
-  return text;
+  throw new Error(lastError || "Gemini API error");
 }
 
 
-// ===============================
-// CLEAN SRT
-// ===============================
+// ======================================
+// Remove Markdown code blocks
+// ======================================
 
 function cleanSrt(text) {
 
   return text
-    .replace(/^```srt\s*/i, "")
-    .replace(/^```\s*/i, "")
-    .replace(/```\s*$/i, "")
+    .replace(/```srt/gi, "")
+    .replace(/```/g, "")
     .trim();
 }
 
 
-// ===============================
-// SRT → MYANMAR SRT
-// ===============================
+// ======================================
+// Split SRT into subtitle blocks
+// ======================================
+
+function parseSrt(srt) {
+
+  return srt
+    .replace(/\r\n/g, "\n")
+    .replace(/\r/g, "\n")
+    .split(/\n\s*\n/)
+    .map(block => block.trim())
+    .filter(Boolean);
+}
+
+
+// ======================================
+// Translate one batch
+// ======================================
+
+async function translateBatch(blocks) {
+
+  const source = blocks.join("\n\n");
+
+  const prompt = `
+Translate the following SRT subtitles into natural Myanmar Burmese.
+
+STRICT RULES:
+
+1. Keep subtitle numbers EXACTLY unchanged.
+2. Keep timestamps EXACTLY unchanged.
+3. Never change timestamps.
+4. Never change subtitle numbering.
+5. Do not add subtitle numbers.
+6. Do not remove subtitle entries.
+7. Translate ONLY the spoken dialogue.
+8. Keep HTML tags such as <i>, </i>, <b>, </b> unchanged.
+9. Keep line breaks where possible.
+10. Use natural, easy-to-understand Myanmar Burmese.
+11. Do not explain anything.
+12. Return ONLY valid SRT.
+13. Do NOT use Markdown code blocks.
+
+SRT TO TRANSLATE:
+
+${source}
+`;
+
+  return cleanSrt(
+    await askGemini(prompt)
+  );
+}
+
+
+// ======================================
+// SRT → Myanmar
+// ======================================
 
 app.post(
   "/translate-srt",
@@ -89,66 +208,85 @@ app.post(
 
       if (!req.file) {
         return res.status(400).json({
-          error: "SRT file မတွေ့ပါ"
+          error: "SRT ဖိုင် မတွေ့ပါ။"
         });
       }
 
-      const originalSrt =
+      const srt =
         fs.readFileSync(
           req.file.path,
           "utf8"
         );
 
-      if (!originalSrt.trim()) {
+      if (!srt.trim()) {
         throw new Error(
-          "SRT file အလွတ်ဖြစ်နေပါတယ်"
+          "SRT ဖိုင် အလွတ်ဖြစ်နေပါတယ်။"
         );
       }
 
-      const prompt = `
-Translate the following SRT subtitle into natural,
-easy-to-understand Myanmar Burmese.
 
-IMPORTANT RULES:
+      const blocks = parseSrt(srt);
 
-1. Keep every subtitle number EXACTLY the same.
-2. Keep every timestamp EXACTLY the same.
-3. Do NOT change timestamp formatting.
-4. Do NOT add or remove subtitle entries.
-5. Translate ONLY the subtitle dialogue.
-6. Preserve HTML tags if present.
-7. Preserve line breaks when appropriate.
-8. Make the Myanmar translation natural and conversational.
-9. Do not translate names unnecessarily.
-10. Return ONLY valid SRT.
-11. Do NOT use Markdown code blocks.
-12. Do NOT add explanations.
+      if (blocks.length === 0) {
+        throw new Error(
+          "SRT format မမှန်ပါ။"
+        );
+      }
 
-SOURCE SRT:
 
-${originalSrt}
-`;
+      // Batch size
+      // 30 subtitle entries per Gemini request
+      const BATCH_SIZE = 30;
 
-      const result = await generateContent([
-        {
-          role: "user",
-          parts: [
-            {
-              text: prompt
-            }
-          ]
-        }
-      ]);
+      const totalBatches =
+        Math.ceil(blocks.length / BATCH_SIZE);
 
-      const translatedSrt =
-        cleanSrt(result);
+      const translated = [];
+
+
+      // Tell browser progress through response headers
+      // The frontend uses polling-style requests
+      // for each batch.
+
+      for (
+        let i = 0;
+        i < totalBatches;
+        i++
+      ) {
+
+        const start =
+          i * BATCH_SIZE;
+
+        const batch =
+          blocks.slice(
+            start,
+            start + BATCH_SIZE
+          );
+
+        console.log(
+          `Translating batch ${i + 1}/${totalBatches}`
+        );
+
+        const result =
+          await translateBatch(batch);
+
+        translated.push(result);
+      }
+
+
+      const finalSrt =
+        translated.join("\n\n").trim();
+
 
       try {
         fs.unlinkSync(req.file.path);
       } catch {}
 
+
       res.json({
-        srt: translatedSrt
+        success: true,
+        srt: finalSrt,
+        total: blocks.length
       });
 
     } catch (error) {
@@ -164,277 +302,19 @@ ${originalSrt}
       res.status(500).json({
         error:
           error.message ||
-          "SRT translation error"
+          "ဘာသာပြန်ရာတွင် Error ဖြစ်နေပါတယ်။"
       });
     }
   }
 );
 
 
-// ===============================
-// VIDEO → MYANMAR SRT
-// ===============================
-
-app.post(
-  "/generate",
-  upload.single("video"),
-  async (req, res) => {
-
-    try {
-
-      if (!req.file) {
-        return res.status(400).json({
-          error: "Video file မတွေ့ပါ"
-        });
-      }
-
-      const filePath = req.file.path;
-      const mimeType = req.file.mimetype;
-      const fileSize = fs.statSync(filePath).size;
-
-      // --------------------------------
-      // 1. Start resumable upload
-      // --------------------------------
-
-      const startResponse = await fetch(
-        "https://generativelanguage.googleapis.com/upload/v1beta/files",
-        {
-          method: "POST",
-          headers: {
-            "x-goog-api-key": API_KEY,
-            "X-Goog-Upload-Protocol": "resumable",
-            "X-Goog-Upload-Command": "start",
-            "X-Goog-Upload-Header-Content-Length":
-              String(fileSize),
-            "X-Goog-Upload-Header-Content-Type":
-              mimeType,
-            "Content-Type":
-              "application/json"
-          },
-          body: JSON.stringify({
-            file: {
-              display_name: req.file.originalname
-            }
-          })
-        }
-      );
-
-      if (!startResponse.ok) {
-
-        const errorText =
-          await startResponse.text();
-
-        throw new Error(
-          `File upload start failed: ${errorText}`
-        );
-      }
-
-      const uploadUrl =
-        startResponse.headers.get(
-          "x-goog-upload-url"
-        );
-
-      if (!uploadUrl) {
-        throw new Error(
-          "Gemini upload URL မရပါ"
-        );
-      }
-
-
-      // --------------------------------
-      // 2. Upload video
-      // --------------------------------
-
-      const videoBuffer =
-        fs.readFileSync(filePath);
-
-      const uploadResponse = await fetch(
-        uploadUrl,
-        {
-          method: "POST",
-          headers: {
-            "Content-Length":
-              String(fileSize),
-            "X-Goog-Upload-Offset": "0",
-            "X-Goog-Upload-Command":
-              "upload, finalize"
-          },
-          body: videoBuffer
-        }
-      );
-
-      const uploadedFile =
-        await uploadResponse.json();
-
-      if (!uploadResponse.ok) {
-        throw new Error(
-          uploadedFile.error?.message ||
-          "Video upload failed"
-        );
-      }
-
-      const fileUri =
-        uploadedFile.file?.uri;
-
-      const fileName =
-        uploadedFile.file?.name;
-
-      if (!fileUri || !fileName) {
-        throw new Error(
-          "Gemini file information မရပါ"
-        );
-      }
-
-
-      // --------------------------------
-      // 3. Wait until video is READY
-      // --------------------------------
-
-      let fileInfo = uploadedFile.file;
-
-      while (
-        fileInfo.state === "PROCESSING"
-      ) {
-
-        await new Promise(
-          resolve =>
-            setTimeout(resolve, 5000)
-        );
-
-        const statusResponse =
-          await fetch(
-            `https://generativelanguage.googleapis.com/v1beta/${fileName}`,
-            {
-              headers: {
-                "x-goog-api-key":
-                  API_KEY
-              }
-            }
-          );
-
-        const statusData =
-          await statusResponse.json();
-
-        if (!statusResponse.ok) {
-          throw new Error(
-            statusData.error?.message ||
-            "Video status error"
-          );
-        }
-
-        fileInfo = statusData.file;
-      }
-
-      if (
-        fileInfo.state === "FAILED"
-      ) {
-        throw new Error(
-          "Gemini video processing failed"
-        );
-      }
-
-
-      // --------------------------------
-      // 4. Generate Myanmar SRT
-      // --------------------------------
-
-      const prompt = `
-Watch this video carefully and create
-Myanmar Burmese subtitles.
-
-IMPORTANT:
-
-1. Listen to the spoken dialogue.
-2. Translate the dialogue naturally into Myanmar.
-3. Create valid SRT format.
-4. Include accurate timestamps.
-5. Split subtitles into readable segments.
-6. Do not add explanations.
-7. Do not use Markdown code blocks.
-8. Return ONLY the SRT.
-
-Example:
-
-1
-00:00:00,000 --> 00:00:03,000
-မြန်မာစာ
-
-2
-00:00:03,000 --> 00:00:06,000
-မြန်မာစာ
-`;
-
-      const result =
-        await generateContent([
-          {
-            role: "user",
-            parts: [
-              {
-                text: prompt
-              },
-              {
-                file_data: {
-                  mime_type:
-                    fileInfo.mimeType ||
-                    mimeType,
-                  file_uri:
-                    fileUri
-                }
-              }
-            ]
-          }
-        ]);
-
-      const srt =
-        cleanSrt(result);
-
-
-      // --------------------------------
-      // 5. Delete temporary file
-      // --------------------------------
-
-      try {
-        fs.unlinkSync(filePath);
-      } catch {}
-
-
-      res.json({
-        srt
-      });
-
-    } catch (error) {
-
-      console.error(error);
-
-      try {
-        if (req.file?.path) {
-          fs.unlinkSync(
-            req.file.path
-          );
-        }
-      } catch {}
-
-      res.status(500).json({
-        error:
-          error.message ||
-          "Video subtitle error"
-      });
-    }
-  }
-);
-
-
-// ===============================
-// START SERVER
-// ===============================
-
-const PORT =
-  process.env.PORT || 3000;
+// ======================================
+// Start
+// ======================================
 
 app.listen(PORT, () => {
-
   console.log(
-    `Server running on port ${PORT}`
+    `Myanmar Subtitle server running on port ${PORT}`
   );
-
 });
