@@ -20,17 +20,12 @@ const upload = multer({
 
 app.use(express.static("public"));
 
-
-// ======================================
-// Translation Jobs
-// ======================================
-
 const jobs = new Map();
 
 
-// ======================================
-// Gemini REST API + Auto Retry
-// ======================================
+// ================================
+// Gemini API
+// ================================
 
 async function askGemini(prompt, maxRetries = 4) {
 
@@ -50,12 +45,10 @@ async function askGemini(prompt, maxRetries = 4) {
         `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent`,
         {
           method: "POST",
-
           headers: {
             "Content-Type": "application/json",
             "x-goog-api-key": API_KEY.trim()
           },
-
           body: JSON.stringify({
             contents: [
               {
@@ -117,47 +110,23 @@ async function askGemini(prompt, maxRetries = 4) {
 
       if (attempt < maxRetries) {
 
-        const waitSeconds =
-          attempt * 5;
+        const waitSeconds = attempt * 5;
 
         console.log(
           `Gemini busy. Retry ${attempt}/${maxRetries} after ${waitSeconds}s`
         );
 
         await new Promise(resolve =>
-          setTimeout(
-            resolve,
-            waitSeconds * 1000
-          )
-        );
-
-      } else {
-
-        throw new Error(
-          `Gemini API မအားသေးပါ။ Retry ${maxRetries} ကြိမ်လုပ်ပြီးပါပြီ။ ${errorMessage}`
+          setTimeout(resolve, waitSeconds * 1000)
         );
       }
 
     } catch (error) {
 
       lastError =
-        error.message ||
-        "Gemini API error";
+        error.message || "Gemini API error";
 
-      const lower =
-        lastError.toLowerCase();
-
-      const retryable =
-        lower.includes("high demand") ||
-        lower.includes("temporarily") ||
-        lower.includes("overloaded") ||
-        lower.includes("unavailable") ||
-        lower.includes("429") ||
-        lower.includes("500") ||
-        lower.includes("502") ||
-        lower.includes("503");
-
-      if (!retryable || attempt === maxRetries) {
+      if (attempt === maxRetries) {
         throw new Error(lastError);
       }
 
@@ -166,10 +135,7 @@ async function askGemini(prompt, maxRetries = 4) {
       );
 
       await new Promise(resolve =>
-        setTimeout(
-          resolve,
-          attempt * 5000
-        )
+        setTimeout(resolve, attempt * 5000)
       );
     }
   }
@@ -180,9 +146,9 @@ async function askGemini(prompt, maxRetries = 4) {
 }
 
 
-// ======================================
-// Clean SRT
-// ======================================
+// ================================
+// SRT Functions
+// ================================
 
 function cleanSrt(text) {
 
@@ -192,10 +158,6 @@ function cleanSrt(text) {
     .trim();
 }
 
-
-// ======================================
-// Parse SRT
-// ======================================
 
 function parseSrt(srt) {
 
@@ -208,14 +170,13 @@ function parseSrt(srt) {
 }
 
 
-// ======================================
-// Translate Batch
-// ======================================
+// ================================
+// Translate
+// ================================
 
 async function translateBatch(blocks) {
 
-  const source =
-    blocks.join("\n\n");
+  const source = blocks.join("\n\n");
 
   const prompt = `
 Translate the following SRT subtitles into natural Myanmar Burmese.
@@ -235,7 +196,7 @@ STRICT RULES:
 11. Do not explain anything.
 12. Return ONLY valid SRT.
 13. Do NOT use Markdown code blocks.
-14. Every subtitle entry in the input MUST appear in the output.
+14. Every subtitle entry MUST appear.
 15. Do not merge subtitle entries.
 16. Do not split subtitle entries.
 
@@ -250,34 +211,28 @@ ${source}
 }
 
 
-// ======================================
-// Update Job
-// ======================================
+// ================================
+// Job Update
+// ================================
 
 function updateJob(jobId, data) {
 
-  const job =
-    jobs.get(jobId);
+  const job = jobs.get(jobId);
 
-  if (!job) {
-    return;
-  }
+  if (!job) return;
 
-  Object.assign(
-    job,
-    data
-  );
+  Object.assign(job, data);
+
+  const message =
+    `data: ${JSON.stringify({
+      progress: job.progress,
+      completed: job.completed,
+      total: job.total,
+      status: job.status,
+      error: job.error || null
+    })}\n\n`;
 
   if (job.clients) {
-
-    const message =
-      `data: ${JSON.stringify({
-        progress: job.progress,
-        completed: job.completed,
-        total: job.total,
-        status: job.status,
-        error: job.error || null
-      })}\n\n`;
 
     for (const client of job.clients) {
 
@@ -289,38 +244,26 @@ function updateJob(jobId, data) {
 }
 
 
-// ======================================
-// Run Translation Job
-// ======================================
+// ================================
+// Translation Worker
+// ================================
 
-async function runTranslation(
-  jobId,
-  filePath
-) {
+async function runTranslation(jobId, filePath) {
 
-  const job =
-    jobs.get(jobId);
+  const job = jobs.get(jobId);
 
-  if (!job) {
-    return;
-  }
+  if (!job) return;
 
   try {
 
-    updateJob(
-      jobId,
-      {
-        progress: 0,
-        completed: 0,
-        status: "SRT ဖိုင်ကို ဖတ်နေပါသည်..."
-      }
-    );
+    updateJob(jobId, {
+      progress: 0,
+      completed: 0,
+      status: "SRT ဖိုင်ကို ဖတ်နေပါသည်..."
+    });
 
     const srt =
-      fs.readFileSync(
-        filePath,
-        "utf8"
-      );
+      fs.readFileSync(filePath, "utf8");
 
     if (!srt.trim()) {
       throw new Error(
@@ -328,8 +271,7 @@ async function runTranslation(
       );
     }
 
-    const blocks =
-      parseSrt(srt);
+    const blocks = parseSrt(srt);
 
     if (blocks.length === 0) {
       throw new Error(
@@ -337,199 +279,366 @@ async function runTranslation(
       );
     }
 
-    // ==================================
-    // IMPORTANT
-    // 10 subtitles per Gemini request
-    // ==================================
-
+    // 10 subtitles per request
     const BATCH_SIZE = 10;
 
-    const total =
-      blocks.length;
+    const total = blocks.length;
 
-    const totalBatches =
-      Math.ceil(
-        total / BATCH_SIZE
-      );
-
-    job.total =
-      total;
-
-    updateJob(
-      jobId,
-      {
-        progress: 0,
-        completed: 0,
-        total,
-        status:
-          `ဘာသာပြန်နေပါသည်... 0 / ${total}`
-      }
-    );
+    job.total = total;
 
     const translated = [];
 
-    // ==================================
-    // Translate batch by batch
-    // ==================================
+    updateJob(jobId, {
+      progress: 0,
+      completed: 0,
+      total,
+      status:
+        `ဘာသာပြန်နေပါသည်... 0 / ${total}`
+    });
+
 
     for (
-      let i = 0;
-      i < totalBatches;
-      i++
+      let start = 0;
+      start < total;
+      start += BATCH_SIZE
     ) {
-
-      const start =
-        i * BATCH_SIZE;
 
       const batch =
         blocks.slice(
           start,
           start + BATCH_SIZE
-        );
+              );
 
-      const batchStart =
-        start + 1;
+    const batchStart =
+      start + 1;
 
-      const batchEnd =
-        Math.min(
-          start + batch.length,
-          total
-        );
-
-      console.log(
-        `Translating batch ${i + 1}/${totalBatches}: ${batchStart}-${batchEnd}`
+    const batchEnd =
+      Math.min(
+        start + batch.length,
+        total
       );
 
-      // Show current work
-      updateJob(
-        jobId,
-        {
-          progress:
-            Math.round(
-              (start / total) * 100
-            ),
-
-          completed:
-            start,
-
-          total,
-
-          status:
-            `Gemini မှ ${batchStart}-${batchEnd} / ${total} ကို ဘာသာပြန်နေပါသည်...`
-        }
-      );
-
-      // ==================================
-      // Gemini translation
-      // ==================================
-
-      const result =
-        await translateBatch(batch);
-
-      translated.push(result);
-
-      // ==================================
-      // REAL PROGRESS
-      // ==================================
-
-      const completed =
-        batchEnd;
-
-      const progress =
+    updateJob(jobId, {
+      progress:
         Math.round(
-          (completed / total) * 100
-        );
-
-      updateJob(
-        jobId,
-        {
-          progress,
-          completed,
-          total,
-          status:
-            `ဘာသာပြန်ပြီးပါပြီ... ${completed} / ${total}`
-        }
-      );
-
-      console.log(
-        `Progress: ${progress}% (${completed}/${total})`
-      );
-    }
-
-
-    // ==================================
-    // Final SRT
-    // ==================================
-
-    const finalSrt =
-      translated
-        .join("\n\n")
-        .trim();
-
-    if (!finalSrt) {
-      throw new Error(
-        "ဘာသာပြန်ပြီး SRT မရရှိပါ။"
-      );
-    }
-
-    job.srt =
-      finalSrt;
-
-    updateJob(
-      jobId,
-      {
-        progress: 100,
-        completed: total,
-        total,
-        status: "completed"
-      }
-    );
+          (start / total) * 100
+        ),
+      completed: start,
+      total,
+      status:
+        `Gemini မှ ${batchStart}-${batchEnd} / ${total} ကို ဘာသာပြန်နေပါသည်...`
+    });
 
     console.log(
-      `Translation completed: ${jobId}`
+      `Translating ${batchStart}-${batchEnd} / ${total}`
     );
 
-    // Delete uploaded file
+    const result =
+      await translateBatch(batch);
+
+    translated.push(result);
+
+    const completed = batchEnd;
+
+    const progress =
+      Math.round(
+        (completed / total) * 100
+      );
+
+    updateJob(jobId, {
+      progress,
+      completed,
+      total,
+      status:
+        `ဘာသာပြန်ပြီးပါပြီ... ${completed} / ${total}`
+    });
+
+    console.log(
+      `Progress ${progress}%`
+    );
+  }
+
+  const finalSrt =
+    translated.join("\n\n").trim();
+
+  if (!finalSrt) {
+    throw new Error(
+      "ဘာသာပြန်ပြီး SRT မရရှိပါ။"
+    );
+  }
+
+  job.srt = finalSrt;
+
+  updateJob(jobId, {
+    progress: 100,
+    completed: total,
+    total,
+    status: "completed"
+  });
+
+  console.log(
+    `Translation completed: ${jobId}`
+  );
+
+  try {
+    fs.unlinkSync(filePath);
+  } catch {}
+
+  setTimeout(() => {
+
+    const currentJob =
+      jobs.get(jobId);
+
+    if (!currentJob) return;
+
+    for (
+      const client
+      of currentJob.clients
+    ) {
+      try {
+        client.end();
+      } catch {}
+    }
+
+    currentJob.clients.clear();
+
+  }, 1000);
+
+} catch (error) {
+
+  console.error(
+    "Translation error:",
+    error
+  );
+
+  updateJob(jobId, {
+    progress: 0,
+    status: "failed",
+    error:
+      error.message ||
+      "ဘာသာပြန်ရာတွင် Error ဖြစ်နေပါတယ်။"
+  });
+
+  try {
+    fs.unlinkSync(filePath);
+  } catch {}
+
+  setTimeout(() => {
+
+    const currentJob =
+      jobs.get(jobId);
+
+    if (!currentJob) return;
+
+    for (
+      const client
+      of currentJob.clients
+    ) {
+      try {
+        client.end();
+      } catch {}
+    }
+
+    currentJob.clients.clear();
+
+  }, 1000);
+}
+  }
+
+
+// ================================
+// Upload SRT
+// ================================
+
+app.post(
+  "/translate-srt",
+  upload.single("srt"),
+  async (req, res) => {
+
     try {
-      fs.unlinkSync(filePath);
-    } catch {}
 
-    // Close SSE
-    setTimeout(() => {
-
-      const currentJob =
-        jobs.get(jobId);
-
-      if (!currentJob) {
-        return;
+      if (!req.file) {
+        return res.status(400).json({
+          error: "SRT ဖိုင် မတွေ့ပါ။"
+        });
       }
 
-      if (currentJob.clients) {
+      const jobId =
+        crypto.randomUUID();
 
-        for (
-          const client
-          of currentJob.clients
-        ) {
+      jobs.set(jobId, {
+        progress: 0,
+        completed: 0,
+        total: 0,
+        status: "starting",
+        srt: null,
+        error: null,
+        clients: new Set()
+      });
 
-          try {
-            client.end();
-          } catch {}
+      runTranslation(
+        jobId,
+        req.file.path
+      );
+
+      res.json({
+        success: true,
+        jobId
+      });
+
+    } catch (error) {
+
+      console.error(error);
+
+      try {
+        if (req.file?.path) {
+          fs.unlinkSync(req.file.path);
         }
+      } catch {}
 
-        currentJob.clients.clear();
-      }
+      res.status(500).json({
+        error:
+          error.message ||
+          "ဘာသာပြန်ရာတွင် Error ဖြစ်နေပါတယ်။"
+      });
+    }
+  }
+);
 
-    }, 1000);
 
+// ================================
+// REAL-TIME PROGRESS
+// ================================
 
-  } catch (error) {
+app.get(
+  "/progress/:jobId",
+  (req, res) => {
 
-    console.error(
-      "Translation error:",
-      error
+    const job =
+      jobs.get(req.params.jobId);
+
+    if (!job) {
+      return res.status(404).end();
+    }
+
+    res.setHeader(
+      "Content-Type",
+      "text/event-stream"
     );
 
-    updateJob(
-      jobId,
-      {
-        progress: 0,
+    res.setHeader(
+      "Cache-Control",
+      "no-cache, no-transform"
+    );
+
+    res.setHeader(
+      "Connection",
+      "keep-alive"
+    );
+
+    res.setHeader(
+      "X-Accel-Buffering",
+      "no"
+    );
+
+    if (res.flushHeaders) {
+      res.flushHeaders();
+    }
+
+    job.clients.add(res);
+
+    res.write(
+      `data: ${JSON.stringify({
+        progress: job.progress,
+        completed: job.completed,
+        total: job.total,
+        status: job.status,
+        error: job.error || null
+      })}\n\n`
+    );
+
+    const heartbeat =
+      setInterval(() => {
+
+        try {
+          res.write(": heartbeat\n\n");
+        } catch {}
+
+      }, 15000);
+
+    req.on(
+      "close",
+      () => {
+
+        clearInterval(heartbeat);
+
+        job.clients.delete(res);
+      }
+    );
+  }
+);
+
+
+// ================================
+// GET RESULT
+// ================================
+
+app.get(
+  "/result/:jobId",
+  (req, res) => {
+
+    const job =
+      jobs.get(req.params.jobId);
+
+    if (!job) {
+
+      return res.status(404).json({
+        error: "Job မတွေ့ပါ။"
+      });
+    }
+
+    if (job.status === "failed") {
+
+      return res.status(500).json({
+        error:
+          job.error ||
+          "ဘာသာပြန်မအောင်မြင်ပါ။"
+      });
+    }
+
+    if (
+      job.status !== "completed" ||
+      !job.srt
+    ) {
+
+      return res.status(202).json({
+        status: job.status,
+        progress: job.progress
+      });
+    }
+
+    res.json({
+      success: true,
+      srt: job.srt,
+      total: job.total
+    });
+
+    setTimeout(() => {
+      jobs.delete(req.params.jobId);
+    }, 60000);
+  }
+);
+
+
+// ================================
+// START SERVER
+// ================================
+
+app.listen(
+  PORT,
+  () => {
+    console.log(
+      `Myanmar Subtitle server running on port ${PORT}`
+    );
+  }
+);
