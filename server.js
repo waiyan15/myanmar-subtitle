@@ -23,17 +23,220 @@ app.use(express.static("public"));
 const jobs = new Map();
 
 
-// ================================
-// Gemini API
-// ================================
+// ========================================
+// Gemini File Upload
+// ========================================
 
-async function askGemini(prompt, maxRetries = 4) {
+async function uploadToGemini(filePath, maxRetries = 4) {
 
   if (!API_KEY) {
     throw new Error(
       "GEMINI_API_KEY မတွေ့ပါ။ Render Environment ကို စစ်ပါ။"
     );
   }
+
+  const fileData = fs.readFileSync(filePath);
+  const fileSize = fileData.length;
+
+  let lastError = "";
+
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+
+    try {
+
+      // Step 1: Start resumable upload
+      const startResponse = await fetch(
+        `https://generativelanguage.googleapis.com/upload/v1beta/files?key=${encodeURIComponent(API_KEY.trim())}`,
+        {
+          method: "POST",
+          headers: {
+            "X-Goog-Upload-Protocol": "resumable",
+            "X-Goog-Upload-Command": "start",
+            "X-Goog-Upload-Header-Content-Length": String(fileSize),
+            "X-Goog-Upload-Header-Content-Type": "text/plain",
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({
+            file: {
+              display_name: "subtitle.srt"
+            }
+          })
+        }
+      );
+
+      if (!startResponse.ok) {
+
+        const errorText =
+          await startResponse.text();
+
+        throw new Error(
+          `Gemini File Upload Start Error: ${errorText}`
+        );
+      }
+
+      const uploadUrl =
+        startResponse.headers.get(
+          "x-goog-upload-url"
+        );
+
+      if (!uploadUrl) {
+        throw new Error(
+          "Gemini upload URL မရရှိပါ။"
+        );
+      }
+
+      // Step 2: Upload actual SRT file
+      const uploadResponse = await fetch(
+        uploadUrl,
+        {
+          method: "POST",
+          headers: {
+            "Content-Length": String(fileSize),
+            "X-Goog-Upload-Offset": "0",
+            "X-Goog-Upload-Command": "upload, finalize"
+          },
+          body: fileData
+        }
+      );
+
+      const uploadText =
+        await uploadResponse.text();
+
+      if (!uploadResponse.ok) {
+
+        throw new Error(
+          `Gemini File Upload Error: ${uploadText}`
+        );
+      }
+
+      const uploadResult =
+        JSON.parse(uploadText);
+
+      const file =
+        uploadResult.file;
+
+      if (!file?.uri) {
+        throw new Error(
+          "Gemini File URI မရရှိပါ။"
+        );
+      }
+
+      console.log(
+        "Gemini file uploaded:",
+        file.name,
+        file.uri
+      );
+
+      return file;
+
+    } catch (error) {
+
+      lastError =
+        error.message ||
+        "Gemini file upload error";
+
+      if (attempt === maxRetries) {
+        throw new Error(lastError);
+      }
+
+      const waitSeconds =
+        attempt * 5;
+
+      console.log(
+        `File upload retry ${attempt}/${maxRetries} after ${waitSeconds}s`
+      );
+
+      await new Promise(resolve =>
+        setTimeout(
+          resolve,
+          waitSeconds * 1000
+        )
+      );
+    }
+  }
+
+  throw new Error(
+    lastError || "Gemini file upload error"
+  );
+}
+
+
+// ========================================
+// Delete Gemini File
+// ========================================
+
+async function deleteGeminiFile(fileName) {
+
+  if (!fileName || !API_KEY) {
+    return;
+  }
+
+  try {
+
+    await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/${fileName}?key=${encodeURIComponent(API_KEY.trim())}`,
+      {
+        method: "DELETE"
+      }
+    );
+
+    console.log(
+      "Gemini file deleted:",
+      fileName
+    );
+
+  } catch (error) {
+
+    console.log(
+      "Gemini file delete failed:",
+      error.message
+    );
+  }
+}
+
+
+// ========================================
+// Gemini Generate Content
+// ========================================
+
+async function askGeminiFile(
+  file,
+  maxRetries = 4
+) {
+
+  if (!API_KEY) {
+    throw new Error(
+      "GEMINI_API_KEY မတွေ့ပါ။ Render Environment ကို စစ်ပါ။"
+    );
+  }
+
+  const prompt = `
+Translate the SRT subtitle file into natural Myanmar Burmese.
+
+STRICT RULES:
+
+1. Keep subtitle numbers EXACTLY unchanged.
+2. Keep timestamps EXACTLY unchanged.
+3. NEVER change timestamps.
+4. NEVER change subtitle numbering.
+5. Do not add subtitle entries.
+6. Do not remove subtitle entries.
+7. Translate ONLY spoken dialogue.
+8. Keep HTML tags such as <i>, </i>, <b>, </b> unchanged.
+9. Keep subtitle line structure where possible.
+10. Use natural, easy-to-understand Myanmar Burmese.
+11. Do not explain anything.
+12. Return ONLY valid SRT.
+13. Do NOT use Markdown code blocks.
+14. Every subtitle entry MUST appear.
+15. Do not merge subtitle entries.
+16. Do not split subtitle entries.
+17. Preserve every subtitle timestamp exactly.
+18. Preserve every subtitle number exactly.
+19. The output must contain the same number of subtitle entries as the original file.
+
+Return ONLY the translated SRT.
+`;
 
   let lastError = "";
 
@@ -56,6 +259,14 @@ async function askGemini(prompt, maxRetries = 4) {
                 parts: [
                   {
                     text: prompt
+                  },
+                  {
+                    file_data: {
+                      mime_type:
+                        file.mimeType ||
+                        "text/plain",
+                      file_uri: file.uri
+                    }
                   }
                 ]
               }
@@ -67,7 +278,8 @@ async function askGemini(prompt, maxRetries = 4) {
         }
       );
 
-      const data = await response.json();
+      const data =
+        await response.json();
 
       if (response.ok) {
 
@@ -110,32 +322,40 @@ async function askGemini(prompt, maxRetries = 4) {
 
       if (attempt < maxRetries) {
 
-        const waitSeconds = attempt * 5;
+        const waitSeconds =
+          attempt * 5;
 
         console.log(
           `Gemini busy. Retry ${attempt}/${maxRetries} after ${waitSeconds}s`
         );
 
         await new Promise(resolve =>
-          setTimeout(resolve, waitSeconds * 1000)
+          setTimeout(
+            resolve,
+            waitSeconds * 1000
+          )
         );
       }
 
     } catch (error) {
 
       lastError =
-        error.message || "Gemini API error";
+        error.message ||
+        "Gemini API error";
 
       if (attempt === maxRetries) {
         throw new Error(lastError);
       }
 
       console.log(
-        `Retry ${attempt}/${maxRetries}: ${lastError}`
+        `Gemini retry ${attempt}/${maxRetries}: ${lastError}`
       );
 
       await new Promise(resolve =>
-        setTimeout(resolve, attempt * 5000)
+        setTimeout(
+          resolve,
+          attempt * 5000
+        )
       );
     }
   }
@@ -146,9 +366,9 @@ async function askGemini(prompt, maxRetries = 4) {
 }
 
 
-// ================================
+// ========================================
 // SRT Functions
-// ================================
+// ========================================
 
 function cleanSrt(text) {
 
@@ -170,58 +390,107 @@ function parseSrt(srt) {
 }
 
 
-// ================================
-// Translate
-// ================================
+// ========================================
+// Validate SRT
+// ========================================
 
-async function translateBatch(blocks) {
+function getSubtitleInfo(block) {
 
-  const source = blocks.join("\n\n");
+  const lines =
+    block
+      .split("\n")
+      .map(line => line.trim());
 
-  const prompt = `
-Translate the following SRT subtitles into natural Myanmar Burmese.
+  const number =
+    lines[0] || "";
 
-STRICT RULES:
+  const timestamp =
+    lines[1] || "";
 
-1. Keep subtitle numbers EXACTLY unchanged.
-2. Keep timestamps EXACTLY unchanged.
-3. Never change timestamps.
-4. Never change subtitle numbering.
-5. Do not add subtitle numbers.
-6. Do not remove subtitle entries.
-7. Translate ONLY the spoken dialogue.
-8. Keep HTML tags such as <i>, </i>, <b>, </b> unchanged.
-9. Keep line breaks where possible.
-10. Use natural, easy-to-understand Myanmar Burmese.
-11. Do not explain anything.
-12. Return ONLY valid SRT.
-13. Do NOT use Markdown code blocks.
-14. Every subtitle entry MUST appear.
-15. Do not merge subtitle entries.
-16. Do not split subtitle entries.
-
-SRT TO TRANSLATE:
-
-${source}
-`;
-
-  return cleanSrt(
-    await askGemini(prompt)
-  );
+  return {
+    number,
+    timestamp
+  };
 }
 
 
-// ================================
+function validateTranslatedSrt(
+  originalSrt,
+  translatedSrt
+) {
+
+  const originalBlocks =
+    parseSrt(originalSrt);
+
+  const translatedBlocks =
+    parseSrt(translatedSrt);
+
+  if (
+    originalBlocks.length !==
+    translatedBlocks.length
+  ) {
+
+    throw new Error(
+      `Subtitle အရေအတွက် မကိုက်ညီပါ။ Original ${originalBlocks.length} ခု / Gemini ${translatedBlocks.length} ခု`
+    );
+  }
+
+  for (
+    let i = 0;
+    i < originalBlocks.length;
+    i++
+  ) {
+
+    const original =
+      getSubtitleInfo(
+        originalBlocks[i]
+      );
+
+    const translated =
+      getSubtitleInfo(
+        translatedBlocks[i]
+      );
+
+    if (
+      original.number !==
+      translated.number
+    ) {
+
+      throw new Error(
+        `Subtitle နံပါတ် ${i + 1} မှာ မကိုက်ညီပါ။`
+      );
+    }
+
+    if (
+      original.timestamp !==
+      translated.timestamp
+    ) {
+
+      throw new Error(
+        `Subtitle ${original.number} ရဲ့ timestamp ပြောင်းသွားပါတယ်။`
+      );
+    }
+  }
+
+  return true;
+}
+
+
+// ========================================
 // Job Update
-// ================================
+// ========================================
 
 function updateJob(jobId, data) {
 
-  const job = jobs.get(jobId);
+  const job =
+    jobs.get(jobId);
 
   if (!job) return;
 
-  Object.assign(job, data);
+  Object.assign(
+    job,
+    data
+  );
 
   const message =
     `data: ${JSON.stringify({
@@ -234,7 +503,10 @@ function updateJob(jobId, data) {
 
   if (job.clients) {
 
-    for (const client of job.clients) {
+    for (
+      const client
+      of job.clients
+    ) {
 
       try {
         client.write(message);
@@ -244,211 +516,249 @@ function updateJob(jobId, data) {
 }
 
 
-// ================================
+// ========================================
 // Translation Worker
-// ================================
+// ========================================
 
-async function runTranslation(jobId, filePath) {
+async function runTranslation(
+  jobId,
+  filePath
+) {
 
-  const job = jobs.get(jobId);
+  const job =
+    jobs.get(jobId);
 
   if (!job) return;
 
+  let geminiFile = null;
+
   try {
 
+    // ------------------------------------
+    // Read SRT
+    // ------------------------------------
+
     updateJob(jobId, {
-      progress: 0,
+      progress: 5,
       completed: 0,
-      status: "SRT ဖိုင်ကို ဖတ်နေပါသည်..."
+      total: 0,
+      status:
+        "SRT ဖိုင်ကို ဖတ်နေပါသည်..."
     });
 
-    const srt =
-      fs.readFileSync(filePath, "utf8");
+    const originalSrt =
+      fs.readFileSync(
+        filePath,
+        "utf8"
+      );
 
-    if (!srt.trim()) {
+    if (!originalSrt.trim()) {
+
       throw new Error(
         "SRT ဖိုင် အလွတ်ဖြစ်နေပါတယ်။"
       );
     }
 
-    const blocks = parseSrt(srt);
+    const blocks =
+      parseSrt(originalSrt);
 
     if (blocks.length === 0) {
+
       throw new Error(
         "SRT format မမှန်ပါ။"
       );
     }
 
-    // 10 subtitles per request
-    const BATCH_SIZE = 10;
-
-    const total = blocks.length;
+    const total =
+      blocks.length;
 
     job.total = total;
 
-    const translated = [];
-
     updateJob(jobId, {
-      progress: 0,
+      progress: 10,
       completed: 0,
       total,
       status:
-        `ဘာသာပြန်နေပါသည်... 0 / ${total}`
+        `SRT ${total} ခု တွေ့ရှိပါသည်။ Gemini သို့ ဖိုင်တင်နေပါသည်...`
     });
 
 
-    for (
-      let start = 0;
-      start < total;
-      start += BATCH_SIZE
-    ) {
+    // ------------------------------------
+    // Upload whole SRT to Gemini
+    // ------------------------------------
 
-      const batch =
-        blocks.slice(
-          start,
-          start + BATCH_SIZE
-              );
+    console.log(
+      `Uploading whole SRT to Gemini: ${total} subtitles`
+    );
 
-    const batchStart =
-      start + 1;
-
-    const batchEnd =
-      Math.min(
-        start + batch.length,
-        total
+    geminiFile =
+      await uploadToGemini(
+        filePath
       );
 
     updateJob(jobId, {
-      progress:
-        Math.round(
-          (start / total) * 100
-        ),
-      completed: start,
+      progress: 25,
+      completed: 0,
       total,
       status:
-        `Gemini မှ ${batchStart}-${batchEnd} / ${total} ကို ဘာသာပြန်နေပါသည်...`
+        "SRT ဖိုင် Gemini သို့ တင်ပြီးပါပြီ။"
     });
 
-    console.log(
-      `Translating ${batchStart}-${batchEnd} / ${total}`
-    );
 
-    const result =
-      await translateBatch(batch);
-
-    translated.push(result);
-
-    const completed = batchEnd;
-
-    const progress =
-      Math.round(
-        (completed / total) * 100
-      );
+    // ------------------------------------
+    // Translate whole file
+    // ------------------------------------
 
     updateJob(jobId, {
-      progress,
-      completed,
+      progress: 30,
+      completed: 0,
       total,
       status:
-        `ဘာသာပြန်ပြီးပါပြီ... ${completed} / ${total}`
+        "Gemini က SRT ဖိုင်တစ်ခုလုံးကို ဘာသာပြန်နေပါသည်..."
     });
 
     console.log(
-      `Progress ${progress}%`
+      "Gemini translating whole SRT..."
     );
-  }
 
-  const finalSrt =
-    translated.join("\n\n").trim();
+    const translated =
+      cleanSrt(
+        await askGeminiFile(
+          geminiFile
+        )
+      );
 
-  if (!finalSrt) {
-    throw new Error(
-      "ဘာသာပြန်ပြီး SRT မရရှိပါ။"
+
+    // ------------------------------------
+    // Validate
+    // ------------------------------------
+
+    updateJob(jobId, {
+      progress: 90,
+      completed: 0,
+      total,
+      status:
+        "ဘာသာပြန်ထားသော SRT ကို စစ်ဆေးနေပါသည်..."
+    });
+
+    validateTranslatedSrt(
+      originalSrt,
+      translated
     );
-  }
 
-  job.srt = finalSrt;
 
-  updateJob(jobId, {
-    progress: 100,
-    completed: total,
-    total,
-    status: "completed"
-  });
+    // ------------------------------------
+    // Done
+    // ------------------------------------
 
-  console.log(
-    `Translation completed: ${jobId}`
-  );
+    job.srt =
+      translated;
 
-  try {
-    fs.unlinkSync(filePath);
-  } catch {}
+    updateJob(jobId, {
+      progress: 100,
+      completed: total,
+      total,
+      status: "completed"
+    });
 
-  setTimeout(() => {
+    console.log(
+      `Translation completed: ${jobId}`
+    );
 
-    const currentJob =
-      jobs.get(jobId);
 
-    if (!currentJob) return;
+    // ------------------------------------
+    // Delete uploaded Gemini file
+    // ------------------------------------
 
-    for (
-      const client
-      of currentJob.clients
-    ) {
-      try {
-        client.end();
-      } catch {}
+    if (geminiFile?.name) {
+
+      await deleteGeminiFile(
+        geminiFile.name
+      );
     }
 
-    currentJob.clients.clear();
+    try {
+      fs.unlinkSync(filePath);
+    } catch {}
 
-  }, 1000);
 
-} catch (error) {
+    // Close SSE connections
+    setTimeout(() => {
 
-  console.error(
-    "Translation error:",
-    error
-  );
+      const currentJob =
+        jobs.get(jobId);
 
-  updateJob(jobId, {
-    progress: 0,
-    status: "failed",
-    error:
-      error.message ||
-      "ဘာသာပြန်ရာတွင် Error ဖြစ်နေပါတယ်။"
-  });
+      if (!currentJob) return;
 
-  try {
-    fs.unlinkSync(filePath);
-  } catch {}
+      for (
+        const client
+        of currentJob.clients
+      ) {
 
-  setTimeout(() => {
+        try {
+          client.end();
+        } catch {}
+      }
 
-    const currentJob =
-      jobs.get(jobId);
+      currentJob.clients.clear();
 
-    if (!currentJob) return;
+    }, 1000);
 
-    for (
-      const client
-      of currentJob.clients
-    ) {
-      try {
-        client.end();
-      } catch {}
+
+  } catch (error) {
+
+    console.error(
+      "Translation error:",
+      error
+    );
+
+    if (geminiFile?.name) {
+
+      await deleteGeminiFile(
+        geminiFile.name
+      );
     }
 
-    currentJob.clients.clear();
+    updateJob(jobId, {
+      progress: 0,
+      status: "failed",
+      error:
+        error.message ||
+        "ဘာသာပြန်ရာတွင် Error ဖြစ်နေပါတယ်။"
+    });
 
-  }, 1000);
+    try {
+      fs.unlinkSync(filePath);
+    } catch {}
+
+
+    setTimeout(() => {
+
+      const currentJob =
+        jobs.get(jobId);
+
+      if (!currentJob) return;
+
+      for (
+        const client
+        of currentJob.clients
+      ) {
+
+        try {
+          client.end();
+        } catch {}
+      }
+
+      currentJob.clients.clear();
+
+    }, 1000);
+  }
 }
-  }
 
 
-// ================================
+// ========================================
 // Upload SRT
-// ================================
+// ========================================
 
 app.post(
   "/translate-srt",
@@ -458,8 +768,10 @@ app.post(
     try {
 
       if (!req.file) {
+
         return res.status(400).json({
-          error: "SRT ဖိုင် မတွေ့ပါ။"
+          error:
+            "SRT ဖိုင် မတွေ့ပါ။"
         });
       }
 
@@ -491,9 +803,13 @@ app.post(
       console.error(error);
 
       try {
+
         if (req.file?.path) {
-          fs.unlinkSync(req.file.path);
+          fs.unlinkSync(
+            req.file.path
+          );
         }
+
       } catch {}
 
       res.status(500).json({
@@ -506,16 +822,18 @@ app.post(
 );
 
 
-// ================================
+// ========================================
 // REAL-TIME PROGRESS
-// ================================
+// ========================================
 
 app.get(
   "/progress/:jobId",
   (req, res) => {
 
     const job =
-      jobs.get(req.params.jobId);
+      jobs.get(
+        req.params.jobId
+      );
 
     if (!job) {
       return res.status(404).end();
@@ -561,7 +879,9 @@ app.get(
       setInterval(() => {
 
         try {
-          res.write(": heartbeat\n\n");
+          res.write(
+            ": heartbeat\n\n"
+          );
         } catch {}
 
       }, 15000);
@@ -570,34 +890,43 @@ app.get(
       "close",
       () => {
 
-        clearInterval(heartbeat);
+        clearInterval(
+          heartbeat
+        );
 
-        job.clients.delete(res);
+        job.clients.delete(
+          res
+        );
       }
     );
   }
 );
 
 
-// ================================
+// ========================================
 // GET RESULT
-// ================================
+// ========================================
 
 app.get(
   "/result/:jobId",
   (req, res) => {
 
     const job =
-      jobs.get(req.params.jobId);
+      jobs.get(
+        req.params.jobId
+      );
 
     if (!job) {
 
       return res.status(404).json({
-        error: "Job မတွေ့ပါ။"
+        error:
+          "Job မတွေ့ပါ။"
       });
     }
 
-    if (job.status === "failed") {
+    if (
+      job.status === "failed"
+    ) {
 
       return res.status(500).json({
         error:
@@ -612,8 +941,10 @@ app.get(
     ) {
 
       return res.status(202).json({
-        status: job.status,
-        progress: job.progress
+        status:
+          job.status,
+        progress:
+          job.progress
       });
     }
 
@@ -624,21 +955,27 @@ app.get(
     });
 
     setTimeout(() => {
-      jobs.delete(req.params.jobId);
+
+      jobs.delete(
+        req.params.jobId
+      );
+
     }, 60000);
   }
 );
 
 
-// ================================
+// ========================================
 // START SERVER
-// ================================
+// ========================================
 
 app.listen(
   PORT,
   () => {
+
     console.log(
       `Myanmar Subtitle server running on port ${PORT}`
     );
+
   }
 );
