@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="my">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Myanmar Subtitle Generator</title>
+
+  <style>
+    body {
+      margin: 0;
+      font-family: Arial, sans-serif;
+      background: #f5f5f5;
+      min-height: 100vh;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+    }
+
+    .box {
+      width: 90%;
+      max-width: 550px;
+      background: white;
+      padding: 30px;
+      border-radius: 18px;
+      box-shadow: 0 5px 25px rgba(0,0,0,0.12);
+      text-align: center;
+    }
+
+    h1 {
+      margin-top: 0;
+      font-size: 28px;
+    }
+
+    p {
+      color: #666;
+    }
+
+    input[type="file"] {
+      width: 100%;
+      padding: 15px 0;
+      margin: 20px 0;
+    }
+
+    button {
+      width: 100%;
+      padding: 15px;
+      border: none;
+      border-radius: 10px;
+      background: #111;
+      color: white;
+      font-size: 17px;
+      cursor: pointer;
+    }
+
+    button:disabled {
+      background: #999;
+    }
+
+    #status {
+      margin-top: 20px;
+      white-space: pre-line;
+    }
+
+    #download {
+      display: none;
+      margin-top: 20px;
+      padding: 15px;
+      background: #168f3d;
+      color: white;
+      text-decoration: none;
+      border-radius: 10px;
+    }
+  </style>
+</head>
+
+<body>
+
+  <div class="box">
+
+    <h1>🇲🇲 Myanmar Subtitle</h1>
+
+    <p>Video တင်ပြီး မြန်မာ SRT Subtitle ထုတ်ပါ</p>
+
+    <input
+      type="file"
+      id="video"
+      accept="video/*"
+    >
+
+    <button id="generate">
+      Generate Myanmar Subtitle
+    </button>
+
+    <div id="status"></div>
+
+    <a id="download" download="myanmar-subtitle.srt">
+      📥 Download SRT
+    </a>
+
+  </div>
+
+<script>
+
+const videoInput = document.getElementById("video");
+const button = document.getElementById("generate");
+const status = document.getElementById("status");
+const download = document.getElementById("download");
+
+button.addEventListener("click", async () => {
+
+  const file = videoInput.files[0];
+
+  if (!file) {
+    status.textContent = "⚠️ Video အရင်ရွေးပါ";
+    return;
+  }
+
+  button.disabled = true;
+  download.style.display = "none";
+
+  status.textContent =
+    "⏳ Video upload လုပ်နေပါတယ်...\n" +
+    "ခဏစောင့်ပေးပါ။";
+
+  const formData = new FormData();
+  formData.append("video", file);
+
+  try {
+
+    status.textContent =
+      "⏳ Gemini က video ကို စစ်ဆေးနေပါတယ်...\n" +
+      "Video အရှည်ပေါ်မူတည်ပြီး အချိန်ကြာနိုင်ပါတယ်။";
+
+    const response = await fetch("/generate", {
+      method: "POST",
+      body: formData
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(data.error || "Error");
+    }
+
+    const blob = new Blob(
+      [data.srt],
+      { type: "text/plain;charset=utf-8" }
+    );
+
+    const url = URL.createObjectURL(blob);
+
+    download.href = url;
+    download.style.display = "block";
+
+    status.textContent =
+      "✅ Subtitle ပြီးပါပြီ!";
+
+  } catch (error) {
+
+    status.textContent =
+      "❌ Error ဖြစ်နေပါတယ်\n\n" +
+      error.message;
+
+  } finally {
+
+    button.disabled = false;
+
+  }
+
+});
+
+</script>
+
+</body>
+</html>
