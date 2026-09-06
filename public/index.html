@@ -1,7 +1,6 @@
 <!DOCTYPE html>
 <html lang="my">
 <head>
-
   <meta charset="UTF-8">
 
   <meta
@@ -12,55 +11,140 @@
   <title>Myanmar Subtitle Translator</title>
 
   <style>
-
     * {
       box-sizing: border-box;
     }
 
     body {
       margin: 0;
+      min-height: 100vh;
       padding: 20px;
+
       font-family:
         Arial,
         "Noto Sans Myanmar",
         sans-serif;
-      background: #f5f5f5;
+
+      background:
+        linear-gradient(
+          135deg,
+          #f5f3ff,
+          #eef7ff
+        );
+
       color: #222;
     }
 
     .container {
-      max-width: 600px;
+      width: 100%;
+      max-width: 620px;
+
       margin: 40px auto;
-      background: white;
+
       padding: 30px;
-      border-radius: 18px;
+
+      background: rgba(255,255,255,0.92);
+
+      border-radius: 24px;
+
       box-shadow:
-        0 5px 25px rgba(0,0,0,0.08);
+        0 15px 50px rgba(60,40,120,0.12);
+
+      border: 1px solid rgba(255,255,255,0.8);
+    }
+
+    .logo {
+      width: 70px;
+      height: 70px;
+
+      margin: 0 auto 15px;
+
+      display: flex;
+      align-items: center;
+      justify-content: center;
+
+      border-radius: 20px;
+
+      background:
+        linear-gradient(
+          135deg,
+          #7c3aed,
+          #4f46e5
+        );
+
+      font-size: 34px;
+
+      box-shadow:
+        0 10px 25px rgba(79,70,229,0.25);
     }
 
     h1 {
       text-align: center;
-      margin-top: 0;
-      font-size: 25px;
+
+      margin: 0;
+
+      font-size: 28px;
+
+      font-weight: 800;
     }
 
     .subtitle {
       text-align: center;
-      color: #666;
-      margin-bottom: 30px;
+
+      margin-top: 10px;
+      margin-bottom: 28px;
+
+      color: #777;
+
+      font-size: 14px;
+
+      line-height: 1.6;
     }
 
     .upload-box {
-      border: 2px dashed #aaa;
-      border-radius: 14px;
-      padding: 30px 20px;
+      display: block;
+
+      border: 2px dashed #c8c5d8;
+
+      border-radius: 18px;
+
+      padding: 32px 20px;
+
       text-align: center;
+
       cursor: pointer;
-      transition: 0.2s;
+
+      background: #fafaff;
+
+      transition: 0.25s;
     }
 
     .upload-box:hover {
-      border-color: #333;
+      border-color: #7c3aed;
+
+      background: #f8f5ff;
+    }
+
+    .upload-icon {
+      font-size: 42px;
+
+      margin-bottom: 10px;
+    }
+
+    .upload-title {
+      font-size: 17px;
+
+      font-weight: bold;
+
+      color: #333;
+    }
+
+    .upload-hint {
+      margin-top: 7px;
+
+      font-size: 13px;
+
+      color: #888;
     }
 
     input[type="file"] {
@@ -68,114 +152,311 @@
     }
 
     .file-name {
-      margin-top: 15px;
-      font-size: 14px;
+      margin-top: 16px;
+
+      padding: 10px;
+
+      border-radius: 10px;
+
+      background: #f0eef8;
+
+      font-size: 13px;
+
       color: #555;
+
       word-break: break-all;
     }
 
     button {
       width: 100%;
+
       margin-top: 20px;
-      padding: 14px;
+
+      padding: 15px;
+
       border: 0;
-      border-radius: 10px;
-      background: #222;
+
+      border-radius: 14px;
+
+      background:
+        linear-gradient(
+          135deg,
+          #7c3aed,
+          #4f46e5
+        );
+
       color: white;
+
       font-size: 16px;
+
+      font-weight: bold;
+
       cursor: pointer;
+
+      box-shadow:
+        0 8px 20px rgba(79,70,229,0.25);
+
+      transition: 0.2s;
+    }
+
+    button:hover:not(:disabled) {
+      transform: translateY(-1px);
+
+      box-shadow:
+        0 10px 25px rgba(79,70,229,0.32);
     }
 
     button:disabled {
-      background: #aaa;
+      background: #bbb;
+
+      box-shadow: none;
+
       cursor: not-allowed;
     }
 
+    /* ==========================
+       Progress
+    ========================== */
+
     .progress-area {
       display: none;
-      margin-top: 25px;
+
+      margin-top: 28px;
+
+      padding: 22px;
+
+      border-radius: 18px;
+
+      background: #f8f7ff;
+
+      border: 1px solid #ebe8ff;
     }
 
-    .progress-text {
-      text-align: center;
-      font-size: 18px;
-      font-weight: bold;
+    .progress-top {
+      display: flex;
+
+      justify-content: space-between;
+
+      align-items: center;
+
       margin-bottom: 12px;
+    }
+
+    .progress-label {
+      font-size: 14px;
+
+      color: #666;
+    }
+
+    .progress-percent {
+      font-size: 25px;
+
+      font-weight: 800;
+
+      color: #5b21b6;
     }
 
     .progress-bar {
       width: 100%;
-      height: 18px;
-      background: #e5e5e5;
+
+      height: 14px;
+
+      background: #e7e5ee;
+
       border-radius: 20px;
+
       overflow: hidden;
     }
 
     .progress-fill {
       width: 0%;
+
       height: 100%;
-      background: #222;
-      transition: width 0.3s ease;
+
+      border-radius: 20px;
+
+      background:
+        linear-gradient(
+          90deg,
+          #7c3aed,
+          #4f46e5
+        );
+
+      transition:
+        width 0.4s ease;
+    }
+
+    .progress-count {
+      margin-top: 12px;
+
+      text-align: center;
+
+      font-size: 14px;
+
+      font-weight: bold;
+
+      color: #555;
     }
 
     .status {
+      margin-top: 8px;
+
       text-align: center;
-      margin-top: 12px;
-      color: #666;
-      font-size: 14px;
+
+      font-size: 13px;
+
+      color: #777;
+
+      line-height: 1.5;
     }
+
+    /* ==========================
+       Download
+    ========================== */
 
     .download {
       display: none;
-      margin-top: 20px;
-      text-align: center;
+
+      margin-top: 22px;
     }
 
     .download a {
       display: block;
-      padding: 14px;
-      background: #222;
+
+      padding: 15px;
+
+      text-align: center;
+
+      background:
+        linear-gradient(
+          135deg,
+          #16a34a,
+          #15803d
+        );
+
       color: white;
+
       text-decoration: none;
-      border-radius: 10px;
+
+      border-radius: 14px;
+
+      font-size: 16px;
+
+      font-weight: bold;
+
+      box-shadow:
+        0 8px 20px rgba(22,163,74,0.22);
     }
+
+    /* ==========================
+       Error
+    ========================== */
 
     .error {
       display: none;
+
       margin-top: 20px;
+
       padding: 15px;
-      border-radius: 10px;
-      background: #ffe5e5;
-      color: #b00000;
+
+      border-radius: 12px;
+
+      background: #fff0f0;
+
+      border: 1px solid #ffd0d0;
+
+      color: #b00020;
+
       white-space: pre-wrap;
+
       word-break: break-word;
+
+      font-size: 14px;
+
+      line-height: 1.5;
     }
 
-  </style>
+    /* ==========================
+       Mobile
+    ========================== */
 
+    @media (max-width: 600px) {
+
+      body {
+        padding: 12px;
+      }
+
+      .container {
+        margin: 15px auto;
+
+        padding: 22px 17px;
+
+        border-radius: 20px;
+      }
+
+      h1 {
+        font-size: 24px;
+      }
+
+      .upload-box {
+        padding: 27px 15px;
+      }
+
+      .progress-area {
+        padding: 18px;
+      }
+    }
+  </style>
 </head>
 
 <body>
 
   <div class="container">
 
-    <h1>🇲🇲 Myanmar Subtitle</h1>
-
-    <div class="subtitle">
-      SRT ဖိုင်ကို မြန်မာဘာသာသို့ အလိုအလျောက် ဘာသာပြန်ပါ
+    <div class="logo">
+      🇲🇲
     </div>
 
+    <h1>
+      Myanmar Subtitle
+    </h1>
+
+    <div class="subtitle">
+      SRT ဖိုင်ကို မြန်မာဘာသာသို့
+      အလိုအလျောက် ဘာသာပြန်ပေးပါသည်
+    </div>
+
+
+    <!-- ==========================
+         Upload
+    =========================== -->
 
     <label
       class="upload-box"
       for="srtFile"
     >
-      📄 SRT ဖိုင်ရွေးရန်
 
-      <div class="file-name" id="fileName">
-        SRT ဖိုင်တစ်ခုရွေးပါ
+      <div class="upload-icon">
+        📄
       </div>
+
+      <div class="upload-title">
+        SRT ဖိုင်ရွေးရန်
+      </div>
+
+      <div class="upload-hint">
+        .srt ဖိုင်တစ်ခုသာ ရွေးပါ
+      </div>
+
+      <div
+        class="file-name"
+        id="fileName"
+      >
+        SRT ဖိုင်တစ်ခု မရွေးရသေးပါ
+      </div>
+
     </label>
+
 
     <input
       id="srtFile"
@@ -184,25 +465,42 @@
     >
 
 
+    <!-- ==========================
+         Translate Button
+    =========================== -->
+
     <button
       id="translateBtn"
       disabled
     >
-      မြန်မာလို ဘာသာပြန်မည်
+      🌐 မြန်မာလို ဘာသာပြန်မည်
     </button>
 
+
+    <!-- ==========================
+         Real Progress
+    =========================== -->
 
     <div
       class="progress-area"
       id="progressArea"
     >
 
-      <div
-        class="progress-text"
-        id="progressText"
-      >
-        0%
+      <div class="progress-top">
+
+        <div class="progress-label">
+          ဘာသာပြန်နေပါသည်
+        </div>
+
+        <div
+          class="progress-percent"
+          id="progressText"
+        >
+          0%
+        </div>
+
       </div>
+
 
       <div class="progress-bar">
 
@@ -213,15 +511,28 @@
 
       </div>
 
+
+      <div
+        class="progress-count"
+        id="progressCount"
+      >
+        0 / 0 subtitles
+      </div>
+
+
       <div
         class="status"
         id="status"
       >
-        ဘာသာပြန်ရန် ပြင်ဆင်နေပါသည်...
+        ပြင်ဆင်နေပါသည်...
       </div>
 
     </div>
 
+
+    <!-- ==========================
+         Download
+    =========================== -->
 
     <div
       class="download"
@@ -237,6 +548,10 @@
 
     </div>
 
+
+    <!-- ==========================
+         Error
+    =========================== -->
 
     <div
       class="error"
@@ -266,6 +581,9 @@ const progressText =
 const progressFill =
   document.getElementById("progressFill");
 
+const progressCount =
+  document.getElementById("progressCount");
+
 const status =
   document.getElementById("status");
 
@@ -282,9 +600,9 @@ const errorBox =
 let selectedFile = null;
 
 
-// =====================================
-// File selected
-// =====================================
+/* ================================
+   File Selected
+================================ */
 
 fileInput.addEventListener(
   "change",
@@ -293,56 +611,69 @@ fileInput.addEventListener(
     selectedFile =
       fileInput.files[0];
 
-    if (selectedFile) {
-
-      fileName.textContent =
-        selectedFile.name;
-
-      translateBtn.disabled =
-        false;
-
-      downloadArea.style.display =
-        "none";
-
-      errorBox.style.display =
-        "none";
+    if (!selectedFile) {
+      return;
     }
+
+    fileName.textContent =
+      selectedFile.name;
+
+    translateBtn.disabled =
+      false;
+
+    downloadArea.style.display =
+      "none";
+
+    errorBox.style.display =
+      "none";
+
+    progressArea.style.display =
+      "none";
 
   }
 );
 
 
-// =====================================
-// Progress animation
-// =====================================
+/* ================================
+   Set Real Progress
+================================ */
 
 function setProgress(
   percent,
+  completed,
+  total,
   message
 ) {
 
   percent =
     Math.max(
       0,
-      Math.min(100, percent)
+      Math.min(
+        100,
+        Number(percent) || 0
+      )
     );
 
   progressText.textContent =
-    `${percent}%`;
+    `${Math.round(percent)}%`;
 
   progressFill.style.width =
     `${percent}%`;
+
+  progressCount.textContent =
+    `${completed || 0} / ${total || 0} subtitles`;
 
   if (message) {
     status.textContent =
       message;
   }
+
 }
 
 
-// =====================================
-// Translate
-// =====================================
+/* ================================
+   Translate
+================================ */
 
 translateBtn.addEventListener(
   "click",
@@ -351,6 +682,7 @@ translateBtn.addEventListener(
     if (!selectedFile) {
       return;
     }
+
 
     translateBtn.disabled =
       true;
@@ -366,8 +698,10 @@ translateBtn.addEventListener(
 
 
     setProgress(
-      5,
-      "SRT ဖိုင်ကို ဖတ်နေပါသည်..."
+      0,
+      0,
+      0,
+      "SRT ဖိုင်ကို ပို့နေပါသည်..."
     );
 
 
@@ -380,37 +714,14 @@ translateBtn.addEventListener(
     );
 
 
+    let eventSource = null;
+
+
     try {
 
-      setProgress(
-        10,
-        "Gemini ထံ ပို့နေပါသည်..."
-      );
-
-
-      /*
-       * Since the server translates in batches,
-       * we show a smooth progress indicator.
-       */
-
-      let fakeProgress = 10;
-
-      const progressTimer =
-        setInterval(() => {
-
-          if (fakeProgress < 90) {
-
-            fakeProgress += 2;
-
-            setProgress(
-              fakeProgress,
-              "ဘာသာပြန်နေပါသည်..."
-            );
-
-          }
-
-        }, 1200);
-
+      /* ==========================
+         Create Translation Job
+      =========================== */
 
       const response =
         await fetch(
@@ -422,9 +733,6 @@ translateBtn.addEventListener(
         );
 
 
-      clearInterval(progressTimer);
-
-
       const data =
         await response.json();
 
@@ -433,61 +741,321 @@ translateBtn.addEventListener(
 
         throw new Error(
           data.error ||
-          "ဘာသာပြန်ရာတွင် Error ဖြစ်နေပါတယ်။"
+          "ဘာသာပြန်ရန် မအောင်မြင်ပါ။"
+        );
+
+      }
+
+
+      /*
+       * Server should return:
+       * { jobId: "xxxxx" }
+       */
+
+      const jobId =
+        data.jobId;
+
+
+      if (!jobId) {
+
+        throw new Error(
+          "Server မှ Job ID မရရှိပါ။"
         );
 
       }
 
 
       setProgress(
-        100,
-        "ဘာသာပြန်ပြီးပါပြီ ✓"
+        0,
+        0,
+        0,
+        "ဘာသာပြန်ခြင်း စတင်နေပါသည်..."
       );
 
 
-      // =================================
-      // Download Myanmar SRT
-      // =================================
+      /* ==========================
+         Real-time SSE Progress
+      =========================== */
 
-      const blob =
-        new Blob(
-          [data.srt],
-          {
-            type:
-              "text/plain;charset=utf-8"
-          }
+      eventSource =
+        new EventSource(
+          `/progress/${jobId}`
         );
 
 
-      const url =
-        URL.createObjectURL(blob);
+      eventSource.onmessage =
+        async (event) => {
+
+          try {
+
+            const progress =
+              JSON.parse(
+                event.data
+              );
 
 
-      const originalName =
-        selectedFile.name
-          .replace(
-            /\.srt$/i,
-            ""
-          );
+            /*
+             * Expected server data:
+             *
+             * {
+             *   progress: 50,
+             *   completed: 30,
+             *   total: 60,
+             *   status: "..."
+             * }
+             */
 
 
-      downloadLink.href =
-        url;
+            if (
+              progress.progress !== undefined
+            ) {
 
-      downloadLink.download =
-        `${originalName}_Myanmar.srt`;
+              setProgress(
+                progress.progress,
+                progress.completed,
+                progress.total,
+                progress.status
+              );
+
+            }
 
 
-      downloadArea.style.display =
-        "block";
+            /* ======================
+               Completed
+            ======================= */
+
+            if (
+              progress.status === "completed" ||
+              progress.status === "done" ||
+              progress.progress >= 100
+            ) {
+
+              eventSource.close();
+
+              setProgress(
+                100,
+                progress.total,
+                progress.total,
+                "ဘာသာပြန်ပြီးပါပြီ ✓"
+              );
+
+
+              /*
+               * Get final SRT
+               */
+
+              const resultResponse =
+                await fetch(
+                  `/result/${jobId}`
+                );
+
+
+              const resultData =
+                await resultResponse.json();
+
+
+              if (!resultResponse.ok) {
+
+                throw new Error(
+                  resultData.error ||
+                  "SRT ဖိုင်ရယူ၍ မရပါ။"
+                );
+
+              }
+
+
+              const blob =
+                new Blob(
+                  [resultData.srt],
+                  {
+                    type:
+                      "text/plain;charset=utf-8"
+                  }
+                );
+
+
+              const url =
+                URL.createObjectURL(
+                  blob
+                );
+
+
+              const originalName =
+                selectedFile.name.replace(
+                  /\.srt$/i,
+                  ""
+                );
+
+
+              downloadLink.href =
+                url;
+
+              downloadLink.download =
+                `${originalName}_Myanmar.srt`;
+
+
+              downloadArea.style.display =
+                "block";
+
+
+              translateBtn.disabled =
+                false;
+
+            }
+
+
+            /* ======================
+               Failed
+            ======================= */
+
+            if (
+              progress.status === "failed" ||
+              progress.status === "error"
+            ) {
+
+              eventSource.close();
+
+              throw new Error(
+                progress.error ||
+                "ဘာသာပြန်ရာတွင် Error ဖြစ်နေပါတယ်။"
+              );
+
+            }
+
+          } catch (err) {
+
+            eventSource.close();
+
+            errorBox.textContent =
+              "❌ Error\n\n" +
+              err.message;
+
+            errorBox.style.display =
+              "block";
+
+            translateBtn.disabled =
+              false;
+
+          }
+
+        };
+
+
+      eventSource.onerror =
+        async () => {
+
+          /*
+           * Don't immediately show an error.
+           *
+           * SSE can disconnect temporarily.
+           */
+
+          if (eventSource) {
+            eventSource.close();
+          }
+
+          /*
+           * Check final result.
+           */
+
+          try {
+
+            const check =
+              await fetch(
+                `/result/${jobId}`
+              );
+
+
+            if (check.ok) {
+
+              const result =
+                await check.json();
+
+
+              if (result.srt) {
+
+                setProgress(
+                  100,
+                  1,
+                  1,
+                  "ဘာသာပြန်ပြီးပါပြီ ✓"
+                );
+
+
+                const blob =
+                  new Blob(
+                    [result.srt],
+                    {
+                      type:
+                        "text/plain;charset=utf-8"
+                    }
+                  );
+
+
+                const url =
+                  URL.createObjectURL(
+                    blob
+                  );
+
+
+                const originalName =
+                  selectedFile.name.replace(
+                    /\.srt$/i,
+                    ""
+                  );
+
+
+                downloadLink.href =
+                  url;
+
+                downloadLink.download =
+                  `${originalName}_Myanmar.srt`;
+
+
+                downloadArea.style.display =
+                  "block";
+
+
+                translateBtn.disabled =
+                  false;
+
+                return;
+              }
+
+            }
+
+          } catch (e) {
+            // ignore temporary SSE error
+          }
+
+
+          errorBox.textContent =
+            "❌ Connection Error\n\n" +
+            "Server နှင့် ချိတ်ဆက်မှု ပြတ်တောက်သွားပါတယ်။";
+
+          errorBox.style.display =
+            "block";
+
+          translateBtn.disabled =
+            false;
+
+        };
 
 
     } catch (error) {
 
+      if (eventSource) {
+        eventSource.close();
+      }
+
+
       setProgress(
+        0,
+        0,
         0,
         "ဘာသာပြန်မအောင်မြင်ပါ"
       );
+
 
       errorBox.textContent =
         "❌ Error\n\n" +
@@ -496,7 +1064,6 @@ translateBtn.addEventListener(
       errorBox.style.display =
         "block";
 
-    } finally {
 
       translateBtn.disabled =
         false;
