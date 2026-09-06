@@ -6,49 +6,64 @@
   <title>Myanmar Subtitle Generator</title>
 
   <style>
+    * {
+      box-sizing: border-box;
+    }
+
     body {
       margin: 0;
       font-family: Arial, sans-serif;
       background: #f5f5f5;
       min-height: 100vh;
-      display: flex;
-      justify-content: center;
-      align-items: center;
+      padding: 30px 15px;
     }
 
-    .box {
-      width: 90%;
-      max-width: 550px;
-      background: white;
-      padding: 30px;
-      border-radius: 18px;
-      box-shadow: 0 5px 25px rgba(0,0,0,0.12);
+    .container {
+      width: 100%;
+      max-width: 600px;
+      margin: auto;
+    }
+
+    .header {
       text-align: center;
+      margin-bottom: 25px;
     }
 
-    h1 {
-      margin-top: 0;
-      font-size: 28px;
+    .header h1 {
+      margin-bottom: 8px;
     }
 
-    p {
+    .header p {
       color: #666;
+    }
+
+    .card {
+      background: white;
+      padding: 25px;
+      margin-bottom: 20px;
+      border-radius: 18px;
+      box-shadow: 0 5px 20px rgba(0,0,0,.08);
+    }
+
+    .card h2 {
+      margin-top: 0;
+      font-size: 20px;
     }
 
     input[type="file"] {
       width: 100%;
-      padding: 15px 0;
-      margin: 20px 0;
+      padding: 12px 0;
+      margin: 12px 0 18px;
     }
 
     button {
       width: 100%;
-      padding: 15px;
-      border: none;
+      padding: 14px;
+      border: 0;
       border-radius: 10px;
       background: #111;
       color: white;
-      font-size: 17px;
+      font-size: 16px;
       cursor: pointer;
     }
 
@@ -56,30 +71,47 @@
       background: #999;
     }
 
-    #status {
-      margin-top: 20px;
+    .status {
+      margin-top: 15px;
       white-space: pre-line;
+      text-align: center;
     }
 
-    #download {
+    .download {
       display: none;
-      margin-top: 20px;
-      padding: 15px;
+      width: 100%;
+      margin-top: 15px;
+      padding: 14px;
+      border-radius: 10px;
       background: #168f3d;
       color: white;
       text-decoration: none;
-      border-radius: 10px;
+      text-align: center;
+    }
+
+    .note {
+      font-size: 13px;
+      color: #777;
+      margin-top: 12px;
+      line-height: 1.5;
     }
   </style>
 </head>
 
 <body>
 
-  <div class="box">
+<div class="container">
 
+  <div class="header">
     <h1>🇲🇲 Myanmar Subtitle</h1>
+    <p>Video / SRT ကို မြန်မာ Subtitle ပြောင်းပါ</p>
+  </div>
 
-    <p>Video တင်ပြီး မြန်မာ SRT Subtitle ထုတ်ပါ</p>
+
+  <!-- VIDEO -->
+  <div class="card">
+
+    <h2>🎬 Video → Myanmar SRT</h2>
 
     <input
       type="file"
@@ -87,38 +119,87 @@
       accept="video/*"
     >
 
-    <button id="generate">
-      Generate Myanmar Subtitle
+    <button id="videoButton">
+      Generate Myanmar SRT
     </button>
 
-    <div id="status"></div>
+    <div id="videoStatus" class="status"></div>
 
-    <a id="download" download="myanmar-subtitle.srt">
-      📥 Download SRT
+    <a
+      id="videoDownload"
+      class="download"
+      download="myanmar-subtitle.srt"
+    >
+      📥 Download Myanmar SRT
     </a>
+
+    <div class="note">
+      Video တင်ပြီး မြန်မာ subtitle ထုတ်နိုင်ပါတယ်။
+      Video အရှည်ပေါ်မူတည်ပြီး အချိန်ကြာနိုင်ပါတယ်။
+    </div>
 
   </div>
 
+
+  <!-- SRT -->
+  <div class="card">
+
+    <h2>📄 SRT → Myanmar SRT</h2>
+
+    <input
+      type="file"
+      id="srt"
+      accept=".srt,text/plain"
+    >
+
+    <button id="srtButton">
+      Translate SRT to Myanmar
+    </button>
+
+    <div id="srtStatus" class="status"></div>
+
+    <a
+      id="srtDownload"
+      class="download"
+      download="translated-myanmar.srt"
+    >
+      📥 Download Myanmar SRT
+    </a>
+
+    <div class="note">
+      SRT ထဲက timestamp နဲ့ subtitle number တွေကို
+      မပြောင်းဘဲ စာသားကိုပဲ မြန်မာလို ဘာသာပြန်ပေးပါတယ်။
+    </div>
+
+  </div>
+
+</div>
+
+
 <script>
 
-const videoInput = document.getElementById("video");
-const button = document.getElementById("generate");
-const status = document.getElementById("status");
-const download = document.getElementById("download");
+// ==========================================
+// VIDEO → SRT
+// ==========================================
 
-button.addEventListener("click", async () => {
+const videoInput = document.getElementById("video");
+const videoButton = document.getElementById("videoButton");
+const videoStatus = document.getElementById("videoStatus");
+const videoDownload = document.getElementById("videoDownload");
+
+videoButton.addEventListener("click", async () => {
 
   const file = videoInput.files[0];
 
   if (!file) {
-    status.textContent = "⚠️ Video အရင်ရွေးပါ";
+    videoStatus.textContent = "⚠️ Video အရင်ရွေးပါ";
     return;
   }
 
-  button.disabled = true;
-  download.style.display = "none";
+  videoButton.disabled = true;
+  videoDownload.style.display = "none";
 
-  status.textContent =
+  videoStatus.textContent =
     "⏳ Video upload လုပ်နေပါတယ်...\n" +
     "ခဏစောင့်ပေးပါ။";
 
@@ -127,9 +208,9 @@ button.addEventListener("click", async () => {
 
   try {
 
-    status.textContent =
-      "⏳ Gemini က video ကို စစ်ဆေးနေပါတယ်...\n" +
-      "Video အရှည်ပေါ်မူတည်ပြီး အချိန်ကြာနိုင်ပါတယ်။";
+    videoStatus.textContent =
+      "⏳ Gemini က video ကို စစ်ဆေးပြီး\n" +
+      "မြန်မာ subtitle ပြုလုပ်နေပါတယ်...";
 
     const response = await fetch("/generate", {
       method: "POST",
@@ -139,31 +220,114 @@ button.addEventListener("click", async () => {
     const data = await response.json();
 
     if (!response.ok) {
-      throw new Error(data.error || "Error");
+      throw new Error(data.error || "Video processing error");
     }
 
     const blob = new Blob(
       [data.srt],
-      { type: "text/plain;charset=utf-8" }
+      {
+        type: "text/plain;charset=utf-8"
+      }
     );
 
     const url = URL.createObjectURL(blob);
 
-    download.href = url;
-    download.style.display = "block";
+    videoDownload.href = url;
+    videoDownload.style.display = "block";
 
-    status.textContent =
-      "✅ Subtitle ပြီးပါပြီ!";
+    videoStatus.textContent =
+      "✅ မြန်မာ Subtitle ပြီးပါပြီ!";
 
   } catch (error) {
 
-    status.textContent =
+    videoStatus.textContent =
       "❌ Error ဖြစ်နေပါတယ်\n\n" +
       error.message;
 
   } finally {
 
-    button.disabled = false;
+    videoButton.disabled = false;
+
+  }
+
+});
+
+
+// ==========================================
+// SRT → MYANMAR SRT
+// ==========================================
+
+const srtInput = document.getElementById("srt");
+const srtButton = document.getElementById("srtButton");
+const srtStatus = document.getElementById("srtStatus");
+const srtDownload = document.getElementById("srtDownload");
+
+srtButton.addEventListener("click", async () => {
+
+  const file = srtInput.files[0];
+
+  if (!file) {
+    srtStatus.textContent = "⚠️ SRT file အရင်ရွေးပါ";
+    return;
+  }
+
+  srtButton.disabled = true;
+  srtDownload.style.display = "none";
+
+  srtStatus.textContent =
+    "⏳ SRT ကို Gemini ဆီပို့နေပါတယ်...";
+
+  const formData = new FormData();
+
+  formData.append("srt", file);
+
+  try {
+
+    srtStatus.textContent =
+      "⏳ Subtitle ကို မြန်မာလို\n" +
+      "ဘာသာပြန်နေပါတယ်...";
+
+    const response = await fetch(
+      "/translate-srt",
+      {
+        method: "POST",
+        body: formData
+      }
+    );
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(
+        data.error || "SRT translation error"
+      );
+    }
+
+    const blob = new Blob(
+      [data.srt],
+      {
+        type: "text/plain;charset=utf-8"
+      }
+    );
+
+    const url = URL.createObjectURL(blob);
+
+    srtDownload.href = url;
+
+    srtDownload.style.display = "block";
+
+    srtStatus.textContent =
+      "✅ မြန်မာ SRT ပြီးပါပြီ!";
+
+  } catch (error) {
+
+    srtStatus.textContent =
+      "❌ Error ဖြစ်နေပါတယ်\n\n" +
+      error.message;
+
+  } finally {
+
+    srtButton.disabled = false;
 
   }
 
