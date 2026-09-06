@@ -6,7 +6,6 @@
     "start": "node server.js"
   },
   "dependencies": {
-    "@google/genai": "latest",
     "express": "latest",
     "multer": "latest"
   }
